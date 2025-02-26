@@ -1,11 +1,11 @@
 {
-    "name": "debate_timer_v0_1_0",
-    "short_name": "debate_timer_v0_1_0",
+    "name": "Debate Timer",
+    "short_name": "Debate Timer",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "A timer app for debate competitions",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -65,11 +65,11 @@ class _MyAppState extends State<MyApp> {
           onError: Colors.white,
           errorContainer: Color(0xFFFFDAD6),
           onErrorContainer: Color(0xFF410002),
-          background: Color(0xFFF5F6F7), // Slightly cooler white
-          onBackground: Color(0xFF001F25),
           surface: Color(0xFFFFFFFF), // Pure white for cards
           onSurface: Color(0xFF001F25),
-          surfaceVariant: Color(0xFFF3F3F3), // Subtle gray for variants
+          surfaceContainerHighest: Color(
+            0xFFF3F3F3,
+          ), // Subtle gray for variants
           onSurfaceVariant: Color(0xFF44474F),
           outline: Color(0xFF74777F),
           outlineVariant: Color(0xFFC4C6D0),
@@ -100,11 +100,11 @@ class _MyAppState extends State<MyApp> {
           onError: Color(0xFF690005),
           errorContainer: Color(0xFF93000A),
           onErrorContainer: Color(0xFFFFDAD6),
-          background: Color(0xFF1A1C1E), // Darker background
-          onBackground: Color(0xFFE6F3FF),
           surface: Color(0xFF001F25), // Slightly lighter surface
           onSurface: Color(0xFFE6F3FF),
-          surfaceVariant: Color(0xFF252629), // Subtle dark gray for variants
+          surfaceContainerHighest: Color(
+            0xFF252629,
+          ), // Subtle dark gray for variants
           onSurfaceVariant: Color(0xFFC4C6D0),
           outline: Color(0xFF8E9099),
           outlineVariant: Color(0xFF44474F),
@@ -314,6 +314,51 @@ class _HomeScreenState extends State<HomeScreen>
                             'Master Reset',
                             'The reset button in the top right will reset all timers and stopwatches.',
                           ),
+                          SizedBox(height: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.people, color: Theme.of(context).colorScheme.primary, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Credits',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Padding(
+                                padding: EdgeInsets.only(left: 28),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    RichText(
+                                      text: TextSpan(
+                                        style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color),
+                                        children: [
+                                          TextSpan(text: 'Art: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          TextSpan(text: 'Rachel Miller'),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    RichText(
+                                      text: TextSpan(
+                                        style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color),
+                                        children: [
+                                          TextSpan(text: 'Programming: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          TextSpan(text: 'Grant DeCapua'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -517,7 +562,7 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
             decoration: BoxDecoration(
               color: Theme.of(
                 context,
-              ).colorScheme.surfaceVariant.withOpacity(0.3),
+              ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
@@ -756,7 +801,7 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Container(
+                                        SizedBox(
                                           width: 300,
                                           height: 200,
                                           child: Image.asset(
@@ -879,7 +924,7 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
 class SpeechTimerScreen extends StatefulWidget {
   final Speech speech;
 
-  SpeechTimerScreen({required this.speech});
+  const SpeechTimerScreen({super.key, required this.speech});
 
   @override
   _SpeechTimerScreenState createState() => _SpeechTimerScreenState();
@@ -977,6 +1022,7 @@ class _SpeechTimerScreenState extends State<SpeechTimerScreen>
     );
   }
 
+  @override
   void dispose() {
     _timerController.dispose();
     _pulseController.dispose();
@@ -1046,7 +1092,9 @@ class _SpeechTimerScreenState extends State<SpeechTimerScreen>
                         value: 1 - _timerController.value,
                         strokeWidth: 12,
                         backgroundColor:
-                            Theme.of(context).colorScheme.surfaceVariant,
+                            Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           getIndicatorColor(),
                         ),
@@ -1094,6 +1142,8 @@ class _SpeechTimerScreenState extends State<SpeechTimerScreen>
 }
 
 class CoinFlipScreen extends StatefulWidget {
+  const CoinFlipScreen({super.key});
+
   @override
   _CoinFlipScreenState createState() => _CoinFlipScreenState();
 }
@@ -1151,39 +1201,72 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
           AnimatedBuilder(
             animation: _animation,
             builder: (context, child) {
-              return Transform(
+              return Stack(
                 alignment: Alignment.center,
-                transform:
-                    Matrix4.identity()
-                      ..setEntry(3, 2, 0.001)
-                      ..rotateX(_animation.value * 12.0 * pi),
-                child: Container(
-                  width: 150,
-                  height: 150,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color:
-                        Theme.of(context).brightness == Brightness.dark
-                            ? Colors.grey[700]
-                            : Colors.grey[300],
+                children: [
+                  Transform(
+                    alignment: Alignment.center,
+                    transform:
+                        Matrix4.identity()
+                          ..setEntry(3, 2, 0.001)
+                          ..rotateX(_animation.value * 12.0 * pi),
+                    child: Container(
+                      width: 150,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey[700]
+                                : Colors.grey[300],
+                      ),
+                      child: Center(
+                        child:
+                            isAnimating
+                                ? Container()
+                                : Padding(
+                                  padding:
+                                      isHeads == null || isHeads!
+                                          ? EdgeInsets.fromLTRB(
+                                            17.0,
+                                            30.0,
+                                            15.0,
+                                            10.0,
+                                          ) // Left, Top, Right, Bottom - more padding on top to move image down
+                                          : EdgeInsets.all(15.0),
+                                  child: Image.asset(
+                                    isHeads == null || isHeads!
+                                        ? 'assets/images/heads.png'
+                                        : 'assets/images/tails.png',
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                      ),
+                    ),
                   ),
-                  child: Center(
-                    child:
-                        isAnimating
-                            ? null
-                            : Text(
-                              isHeads == null
-                                  ? '?'
-                                  : isHeads!
-                                  ? 'H'
-                                  : 'T',
-                              style: TextStyle(
-                                fontSize: 60,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                  ),
-                ),
+                  if (isHeads != null && !isAnimating)
+                    Positioned(
+                      bottom: 0,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          isHeads! ? 'Heads!' : 'Tails!',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               );
             },
           ),
@@ -1195,13 +1278,6 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
             ),
             child: Text('Flip Coin', style: TextStyle(fontSize: 20)),
           ),
-          if (isHeads != null && !isAnimating) ...[
-            SizedBox(height: 20),
-            Text(
-              isHeads! ? 'Heads!' : 'Tails!',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-          ],
         ],
       ),
     );
@@ -1279,7 +1355,7 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
               decoration: BoxDecoration(
                 color: Theme.of(
                   context,
-                ).colorScheme.surfaceVariant.withOpacity(0.3),
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
