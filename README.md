@@ -19,6 +19,7 @@ Debate Timer is a sleek, modern Flutter application designed to keep your debate
   - Tap-to-dismiss functionality
 
 - 🎲 **Built-in Coin Flip**
+  - First one to the room calls it
   - Quick and fair way to decide speaking order
   - Animated flip effect
 
