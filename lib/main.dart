@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'judges_prep_timers.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 void main() {
   runApp(MyApp());
@@ -124,25 +127,26 @@ class _MyAppState extends State<MyApp> {
 }
 
 class HomeScreen extends StatefulWidget {
-  final Function toggleTheme;
   final bool isDarkMode;
+  final VoidCallback toggleTheme;
 
   const HomeScreen({
     super.key,
-    required this.toggleTheme,
     required this.isDarkMode,
+    required this.toggleTheme,
   });
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-// HomeScreen uses a TabController to switch between the Debate Timer and Stopwatch tabs
 // Global keys to access screen states
 final GlobalKey<_DebateTimerScreenState> debateTimerKey =
     GlobalKey<_DebateTimerScreenState>();
 final GlobalKey<_StopwatchScreenState> stopwatchKey =
     GlobalKey<_StopwatchScreenState>();
+final GlobalKey<JudgesPrepTimersState> judgesPrepKey =
+    GlobalKey<JudgesPrepTimersState>();
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
@@ -157,18 +161,18 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         Row(
           children: [
-            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
-            SizedBox(width: 8),
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 24),
+            SizedBox(width: 12),
             Text(
               title,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
           ],
         ),
-        SizedBox(height: 4),
+        SizedBox(height: 8),
         Padding(
-          padding: EdgeInsets.only(left: 28),
-          child: Text(description, style: TextStyle(fontSize: 14)),
+          padding: EdgeInsets.only(left: 36, right: 8, bottom: 8),
+          child: Text(description, style: TextStyle(fontSize: 15)),
         ),
       ],
     );
@@ -177,36 +181,24 @@ class _HomeScreenState extends State<HomeScreen>
   late TabController _tabController;
   final List<Tab> myTabs = <Tab>[
     Tab(
-      icon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.hourglass_empty),
-          SizedBox(width: 8),
-          Text('Debate Timer'),
-        ],
-      ),
+      icon: Row(children: [Icon(Icons.hourglass_empty), Text('Debate Timer')]),
     ),
+    Tab(icon: Row(children: [Icon(Icons.timer_outlined), Text('Stopwatch')])),
     Tab(
       icon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.timer_outlined),
-          SizedBox(width: 8),
-          Text('Stopwatch'),
-        ],
-      ),
-    ),
-    Tab(
-      icon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.monetization_on_outlined),
-          SizedBox(width: 8),
-          Text('Coin Flip'),
-        ],
+        children: [Icon(Icons.monetization_on_outlined), Text('Coin Flip')],
       ),
     ),
   ];
+
+  bool showJudgesPrep = false;
+  int currentPrepTime = 180; // Default prep time (3 minutes)
+
+  void updatePrepTime(int newPrepTime) {
+    setState(() {
+      currentPrepTime = newPrepTime;
+    });
+  }
 
   void _showResetConfirmation() {
     showDialog(
@@ -215,19 +207,36 @@ class _HomeScreenState extends State<HomeScreen>
         return AlertDialog(
           title: Text('Reset Round'),
           content: Text('Are you sure you want to reset all timers?'),
-          actions: [
+          actions: <Widget>[
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+              ),
               child: Text('Cancel'),
-            ),
-            TextButton(
               onPressed: () {
-                // Reset all components
-                debateTimerKey.currentState?.resetAll();
-                stopwatchKey.currentState?.resetStopwatch();
                 Navigator.of(context).pop();
               },
-              child: Text('Reset All'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+              ),
+              child: Text('Reset'),
+              onPressed: () {
+                // Reset debate timer
+                if (debateTimerKey.currentState != null) {
+                  debateTimerKey.currentState!.resetAll();
+                }
+                // Reset stopwatch
+                if (stopwatchKey.currentState != null) {
+                  stopwatchKey.currentState!.resetStopwatch();
+                }
+                // Reset judges prep timers
+                if (judgesPrepKey.currentState != null) {
+                  judgesPrepKey.currentState!.resetAllPrep();
+                }
+                Navigator.of(context).pop();
+              },
             ),
           ],
         );
@@ -239,11 +248,27 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: myTabs.length, vsync: this);
+
+    // Initialize currentPrepTime with the first category's prep time
+    // We're using the first category (Public Forum) as the default
+    // This matches the default selected category in DebateTimerScreen
+    currentPrepTime = 180; // Default to 3 minutes (Public Forum)
+
+    // Make sure the tab controller doesn't reset state when changing tabs
+    _tabController.addListener(() {
+      // This is intentionally empty to override any default behavior
+      // that might be causing state resets
+    });
+
+    // Enable wake lock to keep the screen on while using the app
+    WakelockPlus.enable();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    // Disable wake lock when the app is closed
+    WakelockPlus.disable();
     super.dispose();
   }
 
@@ -253,6 +278,26 @@ class _HomeScreenState extends State<HomeScreen>
       appBar: AppBar(
         title: Text('Debate Timer'),
         actions: [
+          // Judge toggle button
+          IconButton(
+            icon: Icon(Icons.people_outline),
+            onPressed: () {
+              setState(() {
+                showJudgesPrep = !showJudgesPrep;
+              });
+            },
+            tooltip: 'Toggle Judges Prep Timers',
+            style: IconButton.styleFrom(
+              foregroundColor:
+                  showJudgesPrep ? Theme.of(context).colorScheme.primary : null,
+              backgroundColor:
+                  showJudgesPrep
+                      ? Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withOpacity(0.4)
+                      : null,
+            ),
+          ),
           IconButton(
             icon: Icon(Icons.restart_alt),
             onPressed: _showResetConfirmation,
@@ -266,21 +311,21 @@ class _HomeScreenState extends State<HomeScreen>
                 builder: (BuildContext context) {
                   return AlertDialog(
                     backgroundColor: Theme.of(context).colorScheme.surface,
-                    title: Padding(
-                      padding: EdgeInsets.only(left: 4),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.help_outline,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Help',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                    titlePadding: EdgeInsets.all(8),
+                    title: Align(
+                      alignment: Alignment.topRight,
+                      child: IconButton(
+                        icon: Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
                       ),
+                    ),
+                    contentPadding: EdgeInsets.all(24),
+                    insetPadding: EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 40,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     content: SingleChildScrollView(
                       child: Column(
@@ -291,40 +336,55 @@ class _HomeScreenState extends State<HomeScreen>
                             context,
                             Icons.check_box_outlined,
                             'Checkboxes',
-                            'Indicate a speech is complete. Check marks can be added and removed manually, but are added automatically at the conclusion of the timer.',
+                            'Indicate a speech is complete. Check marks can be added and removed manually, but are added automatically at the conclusion of the timer. They will only be reset if you uncheck them manually or use the master reset button.',
                           ),
-                          SizedBox(height: 16),
+                          SizedBox(height: 24),
                           _buildHelpSection(
                             context,
                             Icons.timer,
                             'Prep Timer',
                             'Allows you to start and stop your rolling prep time.',
                           ),
-                          SizedBox(height: 16),
+                          SizedBox(height: 24),
                           _buildHelpSection(
                             context,
                             Icons.format_list_bulleted,
                             'Debate Selector',
-                            'Choose your debate format.',
+                            'Choose your debate event. We currently support Lincoln-Douglas, Public Forum, and Policy debate.',
                           ),
-                          SizedBox(height: 16),
+                          SizedBox(height: 24),
                           _buildHelpSection(
                             context,
                             Icons.restart_alt,
                             'Master Reset',
-                            'The reset button in the top right will reset all timers and stopwatches.',
+                            'The reset button in the top right will reset all timers,stopwatches, and prep time.',
                           ),
-                          SizedBox(height: 8),
+                          SizedBox(height: 24),
+                          _buildHelpSection(
+                            context,
+                            Icons.people_outline,
+                            'Judges Prep',
+                            'Toggle the judges button in the top bar to show/hide prep timers for both teams at the bottom of the screen.',
+                          ),
+                          SizedBox(height: 24),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.people, color: Theme.of(context).colorScheme.primary, size: 20),
+                                  Icon(
+                                    Icons.people,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                    size: 20,
+                                  ),
                                   SizedBox(width: 8),
                                   Text(
                                     'Credits',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -336,9 +396,20 @@ class _HomeScreenState extends State<HomeScreen>
                                   children: [
                                     RichText(
                                       text: TextSpan(
-                                        style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
                                         children: [
-                                          TextSpan(text: 'Art: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          TextSpan(
+                                            text: 'Art: ',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                           TextSpan(text: 'Rachel Miller'),
                                         ],
                                       ),
@@ -346,9 +417,20 @@ class _HomeScreenState extends State<HomeScreen>
                                     SizedBox(height: 4),
                                     RichText(
                                       text: TextSpan(
-                                        style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).textTheme.bodyMedium?.color,
+                                        ),
                                         children: [
-                                          TextSpan(text: 'Programming: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          TextSpan(
+                                            text: 'Programming: ',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                           TextSpan(text: 'Grant DeCapua'),
                                         ],
                                       ),
@@ -358,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ],
                           ),
-                          SizedBox(height: 16),
+                          SizedBox(height: 24),
                         ],
                       ),
                     ),
@@ -387,30 +469,40 @@ class _HomeScreenState extends State<HomeScreen>
         ],
         bottom: TabBar(controller: _tabController, tabs: myTabs),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          DebateTimerScreen(key: debateTimerKey),
-          StopwatchScreen(key: stopwatchKey),
-          CoinFlipScreen(),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                DebateTimerScreen(
+                  key: debateTimerKey,
+                  onPrepTimeChanged: updatePrepTime,
+                ),
+                StopwatchScreen(key: stopwatchKey),
+                CoinFlipScreen(),
+              ],
+            ),
+          ),
+          if (showJudgesPrep)
+            JudgesPrepTimers(prepTime: currentPrepTime, key: judgesPrepKey),
         ],
       ),
     );
   }
 }
 
-//
-// Debate Timer Screen
-//
 class DebateTimerScreen extends StatefulWidget {
-  const DebateTimerScreen({super.key});
+  final Function(int)? onPrepTimeChanged;
+
+  const DebateTimerScreen({super.key, this.onPrepTimeChanged});
 
   @override
   _DebateTimerScreenState createState() => _DebateTimerScreenState();
 }
 
 class _DebateTimerScreenState extends State<DebateTimerScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   // Sample debate categories and preset timers for speeches
   List<DebateCategory> categories = [
     DebateCategory(
@@ -426,7 +518,7 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
         Speech(title: 'Summary (B)', duration: 180),
         Speech(title: 'Grand Crossfire', duration: 180),
         Speech(title: 'Final Focus (A)', duration: 120),
-        Speech(title: 'First Speech (B)', duration: 120),
+        Speech(title: 'Final Focus (B)', duration: 120),
       ],
       prepTime: 180,
     ),
@@ -480,11 +572,16 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
     // Default to the first category
     selectedCategory = categories.first;
 
+    // Notify the parent widget of the initial prep time
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onPrepTimeChanged?.call(selectedCategory!.prepTime);
+    });
+
     _prepTimerController = AnimationController(
       vsync: this,
       duration: Duration(seconds: selectedCategory!.prepTime.toInt()),
     );
-    _prepTimerController.value = 0;
+    _prepTimerController.value = 0; // Start at 0 progress
 
     _prepTimerController.addListener(() {
       if (isPrepRunning) {
@@ -537,8 +634,8 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
       isPrepRunning = false;
       prepElapsed = 0;
 
-      // Reset category and reset all speech completion states
-      selectedCategory?.speeches.forEach((speech) => speech.completed = false);
+      // Don't reset speech completion states
+      // selectedCategory?.speeches.forEach((speech) => speech.completed = false);
 
       // Reset back to first category
       selectedCategory = categories.first;
@@ -553,6 +650,15 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
+    // Check if judges prep timers are shown by looking at the parent HomeScreen
+    bool judgesPrepVisible = false;
+    if (context.findAncestorStateOfType<_HomeScreenState>() != null) {
+      judgesPrepVisible =
+          context.findAncestorStateOfType<_HomeScreenState>()!.showJudgesPrep;
+    }
+
     return Column(
       children: [
         // Dropdown to choose debate category
@@ -578,9 +684,17 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 onChanged: (DebateCategory? newCategory) {
+                  if (newCategory == null) return;
+
                   setState(() {
+                    // Only reset prep time when changing categories
+                    if (selectedCategory?.name != newCategory.name) {
+                      prepElapsed = 0;
+                      widget.onPrepTimeChanged?.call(newCategory.prepTime);
+                    }
+
+                    // Set the new category but don't reset completion states
                     selectedCategory = newCategory;
-                    prepElapsed = 0;
                   });
                 },
                 items:
@@ -644,14 +758,13 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
                               ),
                               actions: [
                                 TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
                                   child: Text('Cancel'),
-                                  onPressed:
-                                      () => Navigator.of(context).pop(false),
                                 ),
                                 TextButton(
-                                  child: Text('Uncheck'),
                                   onPressed:
                                       () => Navigator.of(context).pop(true),
+                                  child: Text('Uncheck'),
                                 ),
                               ],
                             );
@@ -706,216 +819,236 @@ class _DebateTimerScreenState extends State<DebateTimerScreen>
             },
           ),
         ),
-        // Stylized separator
-        Padding(
-          padding: EdgeInsets.fromLTRB(32.0, 0.0, 32.0, 0.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 1,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                        Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Icon(
-                  Icons.timer_outlined,
-                  size: 20,
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                ),
-              ),
-              Expanded(
-                child: Container(
-                  height: 1,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                        Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Running prep time counter at the bottom
-        Padding(
-          padding: EdgeInsets.fromLTRB(36, 0, 36, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Prep Time',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-              ),
-              SizedBox(height: 1),
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _tapCount++;
-                          if (_tapCount == 10) {
-                            showDialog(
-                              context: context,
-                              builder: (BuildContext context) {
-                                return AlertDialog(
-                                  backgroundColor:
-                                      Theme.of(context).colorScheme.surface,
-                                  titlePadding: EdgeInsets.zero,
-                                  title: Align(
-                                    alignment: Alignment.topRight,
-                                    child: IconButton(
-                                      icon: Icon(Icons.close),
-                                      onPressed:
-                                          () => Navigator.of(context).pop(),
-                                    ),
-                                  ),
-                                  contentPadding: EdgeInsets.zero,
-                                  insetPadding: EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 40,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  content: SingleChildScrollView(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        SizedBox(
-                                          width: 300,
-                                          height: 200,
-                                          child: Image.asset(
-                                            'assets/images/linus_ascii.png',
-                                            fit: BoxFit.contain,
-                                          ),
-                                        ),
-                                        SizedBox(height: 32),
-                                        Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 24,
-                                            vertical: 16,
-                                          ),
-                                          child: Text(
-                                            'Made with love and support from Rachel and Linus for an organization that gave me more than I can ever repay.',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(height: 16),
-                                      ],
-                                    ),
-                                  ),
-                                  actions: [],
-                                );
-                              },
-                            );
-                          }
-                          // Reset tap count after 2 seconds of no tapping
-                          _tapResetTimer?.cancel();
-                          _tapResetTimer = Timer(Duration(seconds: 2), () {
-                            setState(() {
-                              _tapCount = 0;
-                            });
-                          });
-                        });
-                      },
-                      child: Text(
-                        formatTime(selectedCategory!.prepTime - prepElapsed),
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
+        if (!judgesPrepVisible) // Hide regular prep time when judges prep timers are shown
+          // Stylized separator
+          Padding(
+            padding: EdgeInsets.fromLTRB(32.0, 0.0, 32.0, 0.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.1),
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.5),
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.1),
+                        ],
                       ),
                     ),
                   ),
-                  Container(
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Icon(
+                    Icons.timer_outlined,
+                    size: 20,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withOpacity(0.5),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    height: 1,
                     decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: togglePrepTimer,
-                          icon: Icon(
-                            isPrepRunning
-                                ? Icons.pause_circle
-                                : Icons.play_circle,
-                            size: 32,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (BuildContext context) {
-                                return AlertDialog(
-                                  title: Text('Reset Prep Timer'),
-                                  content: Text(
-                                    'Are you sure you want to reset the prep timer?',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed:
-                                          () => Navigator.of(context).pop(),
-                                      child: Text('Cancel'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        resetPrepTimer();
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: Text('Reset'),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                          icon: Icon(
-                            Icons.refresh,
-                            size: 28,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ],
+                      gradient: LinearGradient(
+                        colors: [
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.1),
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.5),
+                          Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.1),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
-        ),
+        if (!judgesPrepVisible) // Hide regular prep time when judges prep timers are shown
+          // Running prep time counter at the bottom
+          Padding(
+            padding: EdgeInsets.fromLTRB(36, 0, 36, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Prep Time',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
+                SizedBox(height: 1),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _tapCount++;
+                            if (_tapCount == 10) {
+                              showDialog(
+                                context: context,
+                                builder: (BuildContext context) {
+                                  return AlertDialog(
+                                    backgroundColor:
+                                        Theme.of(context).colorScheme.surface,
+                                    titlePadding: EdgeInsets.zero,
+                                    title: Align(
+                                      alignment: Alignment.topRight,
+                                      child: IconButton(
+                                        icon: Icon(Icons.close),
+                                        onPressed:
+                                            () => Navigator.of(context).pop(),
+                                      ),
+                                    ),
+                                    contentPadding: EdgeInsets.zero,
+                                    insetPadding: EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 40,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    content: SingleChildScrollView(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          SizedBox(
+                                            width: 300,
+                                            height: 200,
+                                            child: Image.asset(
+                                              'assets/images/linus_ascii.png',
+                                              fit: BoxFit.contain,
+                                            ),
+                                          ),
+                                          SizedBox(height: 32),
+                                          Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 24,
+                                              vertical: 16,
+                                            ),
+                                            child: Text(
+                                              'Made with love and support from Rachel and Linus for an organization that gave me more than I can ever repay.',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(height: 16),
+                                        ],
+                                      ),
+                                    ),
+                                    actions: [],
+                                  );
+                                },
+                              );
+                            }
+                            // Reset tap count after 2 seconds of no tapping
+                            _tapResetTimer?.cancel();
+                            _tapResetTimer = Timer(Duration(seconds: 2), () {
+                              setState(() {
+                                _tapCount = 0;
+                              });
+                            });
+                          });
+                        },
+                        child: Text(
+                          formatTime(selectedCategory!.prepTime - prepElapsed),
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: togglePrepTimer,
+                            icon: Icon(
+                              isPrepRunning
+                                  ? Icons.pause_circle
+                                  : Icons.play_circle,
+                              size: 32,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (BuildContext context) {
+                                  return AlertDialog(
+                                    title: Text('Reset Prep Timer'),
+                                    content: Text(
+                                      'Are you sure you want to reset the prep timer?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed:
+                                            () => Navigator.of(context).pop(),
+                                        child: Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          resetPrepTimer();
+                                          Navigator.of(context).pop();
+                                        },
+                                        child: Text('Reset'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                            icon: Icon(
+                              Icons.refresh,
+                              size: 28,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
+
+  // Implement AutomaticKeepAliveClientMixin to preserve state
+  @override
+  bool get wantKeepAlive => true;
 }
 
 //
@@ -1048,21 +1181,6 @@ class _SpeechTimerScreenState extends State<SpeechTimerScreen>
     return '$m:${s.toString().padLeft(2, '0')}';
   }
 
-  Color getIndicatorColor() {
-    double percentage = remainingTime / widget.speech.duration;
-    if (percentage > 0.5) {
-      return Colors.green.shade400; // Soft green
-    } else if (percentage > 0.25) {
-      return Colors.yellow.shade400; // Soft yellow
-    } else {
-      return Colors.red.shade400; // Soft red
-    }
-  }
-
-  double getProgress() {
-    return remainingTime / widget.speech.duration;
-  }
-
   @override
   Widget build(BuildContext context) {
     bool isLowTime = remainingTime <= 10 && timerStarted;
@@ -1139,6 +1257,17 @@ class _SpeechTimerScreenState extends State<SpeechTimerScreen>
       ),
     );
   }
+
+  Color getIndicatorColor() {
+    double percentage = remainingTime / widget.speech.duration;
+    if (percentage > 0.5) {
+      return Colors.green.shade400; // Soft green
+    } else if (percentage > 0.25) {
+      return Colors.yellow.shade400; // Soft yellow
+    } else {
+      return Colors.red.shade400; // Soft red
+    }
+  }
 }
 
 class CoinFlipScreen extends StatefulWidget {
@@ -1149,11 +1278,15 @@ class CoinFlipScreen extends StatefulWidget {
 }
 
 class _CoinFlipScreenState extends State<CoinFlipScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
   bool? isHeads;
   bool isAnimating = false;
+
+  // Implement AutomaticKeepAliveClientMixin to preserve state
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1194,6 +1327,7 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1226,7 +1360,7 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
                                 ? Container()
                                 : Padding(
                                   padding:
-                                      isHeads == null || isHeads!
+                                      isHeads == true
                                           ? EdgeInsets.fromLTRB(
                                             17.0,
                                             30.0,
@@ -1235,7 +1369,7 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
                                           ) // Left, Top, Right, Bottom - more padding on top to move image down
                                           : EdgeInsets.all(15.0),
                                   child: Image.asset(
-                                    isHeads == null || isHeads!
+                                    isHeads == true
                                         ? 'assets/images/heads.png'
                                         : 'assets/images/tails.png',
                                     fit: BoxFit.contain,
@@ -1244,7 +1378,7 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
                       ),
                     ),
                   ),
-                  if (isHeads != null && !isAnimating)
+                  if (isHeads != null)
                     Positioned(
                       bottom: 0,
                       child: Container(
@@ -1257,7 +1391,7 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          isHeads! ? 'Heads!' : 'Tails!',
+                          isHeads == true ? 'Heads' : 'Tails',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -1284,6 +1418,302 @@ class _CoinFlipScreenState extends State<CoinFlipScreen>
   }
 }
 
+class JudgesPrepTimers extends StatefulWidget {
+  final int prepTime;
+
+  const JudgesPrepTimers({super.key, required this.prepTime});
+
+  @override
+  JudgesPrepTimersState createState() => JudgesPrepTimersState();
+}
+
+class JudgesPrepTimersState extends State<JudgesPrepTimers> {
+  // Team A prep time state
+  int teamAPrepTime = 0; // seconds
+  Timer? teamAPrepTimer;
+  bool isTeamAPrepRunning = false;
+
+  // Team B prep time state
+  int teamBPrepTime = 0; // seconds
+  Timer? teamBPrepTimer;
+  bool isTeamBPrepRunning = false;
+
+  @override
+  void dispose() {
+    teamAPrepTimer?.cancel();
+    teamBPrepTimer?.cancel();
+    super.dispose();
+  }
+
+  // Team A timer controls
+  void startTeamAPrep() {
+    if (isTeamAPrepRunning) return;
+    teamAPrepTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        teamAPrepTime += 1;
+      });
+    });
+    setState(() {
+      isTeamAPrepRunning = true;
+    });
+  }
+
+  void stopTeamAPrep() {
+    teamAPrepTimer?.cancel();
+    setState(() {
+      isTeamAPrepRunning = false;
+    });
+  }
+
+  void resetTeamAPrep() {
+    teamAPrepTimer?.cancel();
+    setState(() {
+      teamAPrepTime = 0;
+      isTeamAPrepRunning = false;
+    });
+  }
+
+  // Team B timer controls
+  void startTeamBPrep() {
+    if (isTeamBPrepRunning) return;
+    teamBPrepTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        teamBPrepTime += 1;
+      });
+    });
+    setState(() {
+      isTeamBPrepRunning = true;
+    });
+  }
+
+  void stopTeamBPrep() {
+    teamBPrepTimer?.cancel();
+    setState(() {
+      isTeamBPrepRunning = false;
+    });
+  }
+
+  void resetTeamBPrep() {
+    teamBPrepTimer?.cancel();
+    setState(() {
+      teamBPrepTime = 0;
+      isTeamBPrepRunning = false;
+    });
+  }
+
+  // Reset both timers
+  void resetAllPrep() {
+    resetTeamAPrep();
+    resetTeamBPrep();
+  }
+
+  String formatPrepTime(int seconds) {
+    int m = seconds ~/ 60;
+    int s = seconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: Offset(0, -2),
+          ),
+        ],
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.people_outline,
+                color: Theme.of(context).colorScheme.primary,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Judges Prep Time',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              Spacer(),
+              IconButton(
+                icon: Icon(
+                  Icons.refresh,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
+                onPressed: resetAllPrep,
+                tooltip: 'Reset Both Timers',
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Row(
+            children: [
+              // Team A Prep Timer
+              Expanded(
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Team A',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        formatPrepTime(teamAPrepTime),
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            onPressed:
+                                isTeamAPrepRunning
+                                    ? stopTeamAPrep
+                                    : startTeamAPrep,
+                            icon: Icon(
+                              isTeamAPrepRunning
+                                  ? Icons.pause_circle
+                                  : Icons.play_circle,
+                              size: 28,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                          ),
+                          SizedBox(width: 16),
+                          IconButton(
+                            onPressed: resetTeamAPrep,
+                            icon: Icon(
+                              Icons.refresh,
+                              size: 24,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(width: 12),
+              // Team B Prep Timer
+              Expanded(
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.2),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Team B',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        formatPrepTime(teamBPrepTime),
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            onPressed:
+                                isTeamBPrepRunning
+                                    ? stopTeamBPrep
+                                    : startTeamBPrep,
+                            icon: Icon(
+                              isTeamBPrepRunning
+                                  ? Icons.pause_circle
+                                  : Icons.play_circle,
+                              size: 28,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                          ),
+                          SizedBox(width: 16),
+                          IconButton(
+                            onPressed: resetTeamBPrep,
+                            icon: Icon(
+                              Icons.refresh,
+                              size: 24,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 //
 // Stopwatch Screen
 //
@@ -1294,11 +1724,16 @@ class StopwatchScreen extends StatefulWidget {
   _StopwatchScreenState createState() => _StopwatchScreenState();
 }
 
-class _StopwatchScreenState extends State<StopwatchScreen> {
+class _StopwatchScreenState extends State<StopwatchScreen>
+    with AutomaticKeepAliveClientMixin {
   int stopwatchElapsed = 0; // milliseconds
   Timer? stopwatchTimer;
   bool isStopwatchRunning = false;
   List<int> lapTimes = [];
+
+  // Implement AutomaticKeepAliveClientMixin to preserve state
+  @override
+  bool get wantKeepAlive => true;
 
   void startStopwatch() {
     if (isStopwatchRunning) return;
@@ -1344,6 +1779,7 @@ class _StopwatchScreenState extends State<StopwatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       body: Padding(
         padding: EdgeInsets.all(16.0),
