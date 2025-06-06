@@ -46,3 +46,7 @@ app.*.map.json
 
 # Local Netlify folder
 .netlify
+
+# Node.js dependencies
+node_modules/
+package-lock.json
